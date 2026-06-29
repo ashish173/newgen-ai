@@ -1,0 +1,194 @@
+// Prisma schema for PM+CRM MVP
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SALESPERSON
+  BACK_OFFICE
+  SURVEYOR
+  PRODUCTION_MANAGER
+  INSTALLATION
+}
+
+enum LeadStatus {
+  NEW
+  QUALIFIED
+  QUOTED
+  APPROVED
+  REJECTED
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  REVISED
+}
+
+enum PaymentFlag {
+  NONE
+  PENDING
+  PARTIAL
+  PAID
+}
+
+enum VisitStatus {
+  PLANNED
+  COMPLETED
+}
+
+enum ProductionStage {
+  BACK_OFFICE
+  FACTORY
+  DISPATCH
+}
+
+enum InstallStatus {
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum AttachmentKind {
+  LEAD_IMAGE
+  SURVEY_FILE
+  INSTALL_PROOF
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  name          String
+  email         String   @unique
+  password_hash String
+  role          Role
+  teams         Team[]   @relation("TeamMembers")
+  createdLeads  Lead[]   @relation("LeadCreator")
+  attachments   Attachment[]
+}
+
+model Team {
+  id     Int    @id @default(autoincrement())
+  name   String
+  role   Role?
+  members User[] @relation("TeamMembers")
+}
+
+model Lead {
+  id            Int           @id @default(autoincrement())
+  customerName  String
+  contactPhone  String
+  contactEmail  String?
+  address       String?
+  requirements  String?
+  createdById   Int
+  createdBy     User          @relation("LeadCreator", fields: [createdById], references: [id])
+  status        LeadStatus    @default(NEW)
+  createdAt     DateTime      @default(now())
+  attachments   Attachment[]
+  quotations    Quotation[]
+  payments      Payment[]
+  siteVisits    SiteVisit[]
+}
+
+model Attachment {
+  id            Int            @id @default(autoincrement())
+  kind          AttachmentKind
+  leadId        Int?
+  lead          Lead?          @relation(fields: [leadId], references: [id])
+  installTaskId Int?
+  installTask   InstallationTask? @relation(fields: [installTaskId], references: [id])
+  filePath      String
+  mimeType      String
+  lat           Float?
+  lng           Float?
+  capturedAt    DateTime?
+  uploadedById  Int
+  uploadedBy    User           @relation(fields: [uploadedById], references: [id])
+  createdAt     DateTime       @default(now())
+}
+
+model Quotation {
+  id         Int            @id @default(autoincrement())
+  leadId     Int
+  lead       Lead           @relation(fields: [leadId], references: [id])
+  version    Int            @default(1)
+  status     QuoteStatus    @default(DRAFT)
+  total      Float          @default(0)
+  createdAt  DateTime       @default(now())
+  sentAt     DateTime?
+  approvedAt DateTime?
+  items      QuotationItem[]
+  production ProductionOrder?
+}
+
+model QuotationItem {
+  id           Int        @id @default(autoincrement())
+  quotationId  Int
+  quotation    Quotation  @relation(fields: [quotationId], references: [id])
+  description  String
+  quantity     Int        @default(1)
+  unitPrice    Float      @default(0)
+}
+
+model Payment {
+  id          Int          @id @default(autoincrement())
+  leadId      Int
+  lead        Lead         @relation(fields: [leadId], references: [id])
+  quotationId Int?
+  quotation   Quotation?   @relation(fields: [quotationId], references: [id])
+  flag        PaymentFlag  @default(NONE)
+  notedAt     DateTime     @default(now())
+  note        String?
+  amount      Float?
+}
+
+model SiteVisit {
+  id             Int        @id @default(autoincrement())
+  leadId         Int
+  lead           Lead       @relation(fields: [leadId], references: [id])
+  plannedFor     DateTime
+  assignedTeamId Int
+  assignedTeam   Team       @relation(fields: [assignedTeamId], references: [id])
+  status         VisitStatus @default(PLANNED)
+  dueDate        DateTime
+  survey         Survey?
+}
+
+model Survey {
+  id            Int        @id @default(autoincrement())
+  siteVisitId   Int        @unique
+  siteVisit     SiteVisit  @relation(fields: [siteVisitId], references: [id])
+  uploadedById  Int
+  uploadedBy    User       @relation(fields: [uploadedById], references: [id])
+  uploadedAt    DateTime   @default(now())
+  filePath      String
+  dueDate       DateTime
+}
+
+model ProductionOrder {
+  id            Int              @id @default(autoincrement())
+  quotationId   Int              @unique
+  quotation     Quotation        @relation(fields: [quotationId], references: [id])
+  stage         ProductionStage  @default(BACK_OFFICE)
+  updatedAt     DateTime         @updatedAt
+  installation  InstallationTask?
+}
+
+model InstallationTask {
+  id                 Int             @id @default(autoincrement())
+  productionOrderId  Int             @unique
+  productionOrder    ProductionOrder @relation(fields: [productionOrderId], references: [id])
+  assignedTeamId     Int
+  assignedTeam       Team            @relation(fields: [assignedTeamId], references: [id])
+  status             InstallStatus   @default(ASSIGNED)
+  completedAt        DateTime?
+  proofs             Attachment[]
+}
